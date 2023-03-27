@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 from numpy.testing import assert_almost_equal
 from typing import List, Any, Tuple
-from tiny_autodiff import *
+from tiny_autograd import *
 
 
 class AutodiffTest(unittest.TestCase):
@@ -31,7 +31,7 @@ class AutodiffTest(unittest.TestCase):
     def test_sum_and_mean(self):
         a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        sum = grad(lambda a: a.sum(axis=1).exp().sum())
+        sum = g(lambda a: a.sum(axis=1).exp().sum())
         self.assertGrad(
             sum(a),
             3269420.8012656034,
@@ -41,7 +41,7 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-        mean = grad(lambda a: a.mean(axis=1).pow(2).sum())
+        mean = g(lambda a: a.mean(axis=1).pow(2).sum())
         self.assertGrad(
             mean(a),
             29,
@@ -56,7 +56,7 @@ class AutodiffTest(unittest.TestCase):
         b = np.array([7.0, 9.0, 11.0])
         c = [7.0, 3.0]  # check right matmul
         d = np.array([[1.5, 1.0], [2.5, 5.0], [7.0, 3.5]])
-        f = grad(lambda a, b: (a @ b).pow(2).sum())
+        f = g(lambda a, b: (a @ b).pow(2).sum())
 
         # check one dimensional expansion
         self.assertGrad(
@@ -108,14 +108,14 @@ class AutodiffTest(unittest.TestCase):
         x = np.array([[100.0, 90.0, 99.0], [80.0, 81.0, 78.0]])
         m = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        sm = grad(lambda x: (x.softmax() * m[0]).sum())
+        sm = g(lambda x: (x.softmax() * m[0]).sum())
         self.assertGrad(
             sm(x[0]),
             1.5378983,
             x=[-3.9322203e-01, 1.5336655e-05, 3.9320675e-01],
         )
 
-        sm = grad(lambda x: (x.softmax(axis=0) * m).sum())
+        sm = g(lambda x: (x.softmax(axis=0) * m).sum())
         self.assertGrad(
             sm(x),
             6.000370192186187,
@@ -125,7 +125,7 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-        sm = grad(lambda x: (x.softmax(axis=1) * m).sum())
+        sm = g(lambda x: (x.softmax(axis=1) * m).sum())
         self.assertGrad(
             sm(x),
             6.313520746520074,
@@ -149,7 +149,7 @@ class AutodiffTest(unittest.TestCase):
             prediction = model(theta, x)
             return ((prediction - y) ** 2).mean()
 
-        loss_fn_grad = grad(loss_fn)
+        loss_fn_grad = g(loss_fn, argnum={0})
 
         def update(theta: ValueType, lr: float = 0.1) -> ValueType:
             _, grads = loss_fn_grad(theta, xs, ys)
@@ -159,6 +159,17 @@ class AutodiffTest(unittest.TestCase):
         for _ in range(100):
             theta = update(theta)
         assert_almost_equal(theta, [2.99636699, -1.00343618])
+
+    def test_grad_leaves(self):
+        tape = Tape()
+        x = tape.var(np.array([-1, 2, 0]))
+        y = tape.var(np.array([0, 1, 2]))
+        z = tape.var(1.0)
+        o = ((x - y) ** (z * z * 2.0)).sum()
+        grad = o.grad(leaves=[x])
+        assert_almost_equal(grad.wrt(x), [-2, 2, -4])
+        assert_almost_equal(grad.wrt(y), 0.0)  # not computed
+        assert_almost_equal(grad.wrt(z), 0.0)  # not computed
 
 
 if __name__ == "__main__":

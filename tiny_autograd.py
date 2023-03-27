@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import inspect
+from functools import wraps
 from typing import (
     Any,
     Callable,
+    Iterable,
     Iterator,
     List,
     NewType,
@@ -14,12 +16,11 @@ from typing import (
     TypeVar,
     Dict,
 )
-import warnings
 
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["ArrayType", "ValueType", "Var", "Grads", "grad", "Tape"]
+__all__ = ["ArrayType", "ValueType", "Var", "Grads", "g", "Tape"]
 
 ArrayType = NDArray[np.float32 | np.float64]
 ValueType = ArrayType | float
@@ -49,9 +50,11 @@ class Var:
         self._value = value
         self._index = index  # index of this variable in the list of nodes on the tape
 
-    def grad(self, requested: Optional[Set[Var]] = None) -> Grad:
-        """Calculate gradients of this variable with respect to all other the variables
-        that produced this variable. This variable needs to be a scalar.
+    def grad(self, leaves: Optional[Iterable[Var]] = None) -> Grad:
+        """Calculate gradients of this variable with respect to leaves
+        (or all other the variables if leaves is None) that produced this variable.
+
+        Note: This variable needs to be a scalar.
         """
         if not isinstance(self._value, float) and self._value.size != 1:
             raise ValueError("Gradient can only be calculated for scalar variables")
@@ -60,30 +63,32 @@ class Var:
         grads: List[ValueType] = [0.0] * (self._index + 1)
         grads[-1] = 1.0  # gradient with respect to value itself is 1.0
 
-        # TODO: Do not do full pass, calculate derivative that are requested
-        #      - traverse and find sub-trees that are not requested and eliminate
-        #        them in the backward pass
-        skip: Set[ValueIndex] = set()
-        if requested is not None:
-            # traverse execution graph
-            def is_requested(index: ValueIndex) -> bool:
-                if index in requested_indices:
+        # find variables that are required to compute gradients for all the leaves
+        skip: List[bool] = [False] * (self._index + 1)
+        if leaves is not None:
+            # skip all nodes that are not required to compute gradients for leaves
+            def is_required(index: ValueIndex) -> bool:
+                if index in leaves_indices:
                     return True
-                request = False
-                for child_index, _ in self._tape.nodes[index]:
-                    if is_requested(child_index):
-                        request = True
-                    else:
-                        skip.add(child_index)
-                return request
+                required = False
+                # do not use `any` as it only evaluates until first True
+                for child, _ in self._tape.nodes[index]:
+                    if is_required(child):
+                        required = True
+                if not required:
+                    skip[index] = True
+                return required
 
-            requested_indices = {var._index for var in requested}
+            leaves_indices = {var._index for var in leaves}
+            is_required(self._index)
 
         # reverse pass
         for index in range(self._index, -1, -1):
             grad = grads[index]
             # accumulate gradients
             for dep_index, vjp in self._tape.nodes[index]:
+                if skip[dep_index]:
+                    continue
                 grads[dep_index] += vjp(grad)
 
         return Grad(grads)
@@ -251,27 +256,24 @@ class Var:
         other = self.__lift(other)
         result = self._value**other._value
 
-        def vjp_other(grad: ValueType) -> ValueType:
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
-                # raises warning if `x` in `x^y` is negative, even if we are not
-                # interested in gradient wrt `y` it is still computed for something
-                # like `x^2`
-                value_log = np.log(replace_zero(self._value, 1.0))
-            return unbroadcast(value_log * result * grad, other._value)
-
         return self._tape.var(
             result,
             (
                 self._index,
-                lambda g: unbroadcast(
-                    other._value
+                unbroadcast_vjp(
+                    self._value,
+                    lambda g: other._value
                     * self._value ** np.where(other._value, other._value - 1, 1.0)
                     * g,
-                    self._value,
                 ),
             ),
-            (other._index, vjp_other),
+            (
+                other._index,
+                unbroadcast_vjp(
+                    other._value,
+                    lambda g: np.log(replace_zero(self._value, 1.0)) * result * g,
+                ),
+            ),
         )
 
     def pow(self, other: VarLike) -> Var:
@@ -403,7 +405,10 @@ class Grads:
         return "\n".join(f"{name}: {grad}" for name, grad in self)
 
 
-def grad(fn: Callable[..., Any]) -> Callable[..., Tuple[ValueType, Grads]]:
+def g(
+    fn: Callable[..., Any],
+    argnum: Optional[Set[str | int]] = None,
+) -> Callable[..., Tuple[ValueType, Grads]]:
     """Gradient decorator
 
     Convert function to a new function which returns result as the first argument
@@ -431,7 +436,10 @@ def grad(fn: Callable[..., Any]) -> Callable[..., Tuple[ValueType, Grads]]:
         # trace function
         result = fn(*var_args, **var_kwargs)
         # compute gradients
-        grad = result.grad()
+        if argnum is None:
+            grad = result.grad(vars.values())
+        else:
+            grad = result.grad(var for name, var in vars.items() if name in argnum)
 
         # extract gradients for all arguments
         grads = Grads({name: grad.wrt(var) for name, var in vars.items()})
@@ -484,6 +492,7 @@ def unbroadcast_vjp(target: ValueType, vjp_base: VJP) -> VJP:
     gradients along broadcasted axes.
     """
 
+    @wraps(vjp_base)
     def vjp(grad: ValueType) -> ValueType:
         return unbroadcast(vjp_base(grad), target)
 
