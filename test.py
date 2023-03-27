@@ -104,6 +104,37 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
+    def test_softmax(self):
+        x = np.array([[100.0, 90.0, 99.0], [80.0, 81.0, 78.0]])
+        m = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+
+        sm = grad(lambda x: (x.softmax() * m[0]).sum())
+        self.assertGrad(
+            sm(x[0]),
+            1.5378983,
+            x=[-3.9322203e-01, 1.5336655e-05, 3.9320675e-01],
+        )
+
+        sm = grad(lambda x: (x.softmax(axis=0) * m).sum())
+        self.assertGrad(
+            sm(x),
+            6.000370192186187,
+            x=[
+                [0.0, -3.7026405e-04, 0.0],
+                [6.1834609e-09, 3.7013800e-04, 2.2747679e-09],
+            ],
+        )
+
+        sm = grad(lambda x: (x.softmax(axis=1) * m).sum())
+        self.assertGrad(
+            sm(x),
+            6.313520746520074,
+            x=[
+                [-3.9322203e-01, 1.5336655e-05, 3.9320675e-01],
+                [-2.0127125e-01, 1.5827250e-01, 4.2998947e-02],
+            ],
+        )
+
     def test_linear_regression(self):
         np.random.seed(12345)
         xs = np.random.normal(size=(100,))
@@ -120,18 +151,13 @@ class AutodiffTest(unittest.TestCase):
 
         loss_fn_grad = grad(loss_fn)
 
-        def update(
-            theta: ValueType,
-            x: ValueType,
-            y: ValueType,
-            lr: float = 0.1,
-        ) -> ValueType:
-            _, grads = loss_fn_grad(theta, x, y)
+        def update(theta: ValueType, lr: float = 0.1) -> ValueType:
+            _, grads = loss_fn_grad(theta, xs, ys)
             return theta - lr * grads.theta
 
         theta = np.array([1.0, 1.0])
         for _ in range(100):
-            theta = update(theta, xs, ys)
+            theta = update(theta)
         assert_almost_equal(theta, [2.99636699, -1.00343618])
 
 

@@ -2,7 +2,18 @@
 from __future__ import annotations
 
 import inspect
-from typing import Any, Callable, Iterator, List, NewType, Tuple, TypeVar, Dict
+from typing import (
+    Any,
+    Callable,
+    Iterator,
+    List,
+    NewType,
+    Optional,
+    Set,
+    Tuple,
+    TypeVar,
+    Dict,
+)
 import warnings
 
 import numpy as np
@@ -38,7 +49,7 @@ class Var:
         self._value = value
         self._index = index  # index of this variable in the list of nodes on the tape
 
-    def grad(self) -> Grad:
+    def grad(self, requested: Optional[Set[Var]] = None) -> Grad:
         """Calculate gradients of this variable with respect to all other the variables
         that produced this variable. This variable needs to be a scalar.
         """
@@ -48,6 +59,25 @@ class Var:
         # initialize grads
         grads: List[ValueType] = [0.0] * (self._index + 1)
         grads[-1] = 1.0  # gradient with respect to value itself is 1.0
+
+        # TODO: Do not do full pass, calculate derivative that are requested
+        #      - traverse and find sub-trees that are not requested and eliminate
+        #        them in the backward pass
+        skip: Set[ValueIndex] = set()
+        if requested is not None:
+            # traverse execution graph
+            def is_requested(index: ValueIndex) -> bool:
+                if index in requested_indices:
+                    return True
+                request = False
+                for child_index, _ in self._tape.nodes[index]:
+                    if is_requested(child_index):
+                        request = True
+                    else:
+                        skip.add(child_index)
+                return request
+
+            requested_indices = {var._index for var in requested}
 
         # reverse pass
         for index in range(self._index, -1, -1):
@@ -260,20 +290,24 @@ class Var:
             np.log(self._value), (self._index, lambda g: g / self._value)
         )
 
-    def sum(self, axis: int | Tuple[int] | None = None) -> Var:
+    def sum(self, axis: Any = None) -> Var:
+        axis = self.__unlift(axis)
         return self._tape.var(
             np.sum(self._value, axis=axis),  # type: ignore
             (self._index, lambda g: broadcast_to_match(g, self._value, axis)[0]),
         )
 
-    def mean(self, axis: int | Tuple[int] | None = None) -> Var:
+    def mean(self, axis: Any = None) -> Var:
         def vjp(grad: ValueType) -> ValueType:
             grad, repeats = broadcast_to_match(grad, self._value, axis)
             return grad / repeats
 
+        axis = self.__unlift(axis)
         return self._tape.var(np.mean(self._value, axis=axis), (self._index, vjp))
 
     def clip(self, min: Any, max: Any) -> Var:
+        min = self.__unlift(min)
+        max = self.__unlift(max)
         result = np.clip(self._value, min, max)
         return self._tape.var(
             result,
@@ -282,6 +316,17 @@ class Var:
                 lambda g: g * np.logical_and(result != min, result != max),
             ),
         )
+
+    def softmax(self, axis: Any = None) -> Var:
+        def vjp(grad: ValueType) -> ValueType:
+            """vjp(g) = S * (g - ΣgS), where S - soft-max"""
+            grad_sm = grad * softmax
+            return grad_sm - softmax * np.sum(grad_sm, axis=axis, keepdims=True)  # type: ignore
+
+        axis = self.__unlift(axis)
+        x = np.exp(self._value - np.max(self._value, axis=axis, keepdims=True))  # type: ignore
+        softmax = x / np.sum(x, axis=axis, keepdims=True)  # type: ignore
+        return self._tape.var(softmax, (self._index, vjp))
 
 
 VarLike = Var | ValueType
