@@ -20,7 +20,7 @@ from typing import (
 import numpy as np
 from numpy.typing import NDArray
 
-__all__ = ["ArrayType", "ValueType", "Var", "Grads", "g", "Tape"]
+__all__ = ["ArrayType", "ValueType", "Var", "Grads", "grad", "Tape"]
 
 ArrayType = NDArray[np.float32 | np.float64]
 ValueType = ArrayType | float
@@ -56,7 +56,7 @@ class Var:
 
         Note: This variable needs to be a scalar.
         """
-        if not isinstance(self._value, float) and self._value.size != 1:
+        if np.size(self._value) != 1:
             raise ValueError("Gradient can only be calculated for scalar variables")
 
         # initialize grads
@@ -307,7 +307,7 @@ class Var:
         axis = self.__unlift(axis)
         return self._tape.var(np.mean(self._value, axis=axis), (self._index, vjp))
 
-    def clip(self, min: Any, max: Any) -> Var:
+    def clip(self, min: Any = None, max: Any = None) -> Var:
         min = self.__unlift(min)
         max = self.__unlift(max)
         result = np.clip(self._value, min, max)
@@ -329,6 +329,9 @@ class Var:
         x = np.exp(self._value - np.max(self._value, axis=axis, keepdims=True))  # type: ignore
         softmax = x / np.sum(x, axis=axis, keepdims=True)  # type: ignore
         return self._tape.var(softmax, (self._index, vjp))
+
+    def relu(self) -> Var:
+        return self.clip(0.0)
 
 
 VarLike = Var | ValueType
@@ -405,7 +408,7 @@ class Grads:
         return "\n".join(f"{name}: {grad}" for name, grad in self)
 
 
-def g(
+def grad(
     fn: Callable[..., Any],
     argnum: Optional[Set[str | int]] = None,
 ) -> Callable[..., Tuple[ValueType, Grads]]:
@@ -417,32 +420,24 @@ def g(
 
     def grad(*args: Any, **kwargs: Any) -> Tuple[ValueType, Grads]:
         tape = Tape()
+        var_args, var_kwargs = tree_map((args, kwargs), lambda value: tape.var(value))
 
-        # create variables for all input arguments
-        spec = inspect.getfullargspec(fn)
-        vars: Dict[int | str, Var] = {}
-        var_args: List[Var] = []
-        for index, name in enumerate(spec.args):
-            var = tape.var(args[index])
-            vars[name] = var
-            vars[index] = var
-            var_args.append(var)
-        var_kwargs: Dict[str, Var] = {}
-        for name, value in kwargs.items():
-            var = tape.var(value)
-            vars[name] = var
-            var_kwargs[name] = var
+        # find leaf variables of interest and its names
+        var_named: Dict[str, Any] = {}
+        spec = inspect.getfullargspec(fn).args
+        for index, var in enumerate(var_args):
+            if argnum is None or index in argnum:
+                var_named[spec[index]] = var
+        for name, var in var_kwargs.items():
+            if argnum is None or name in argnum:
+                var_named[name] = var
 
-        # trace function
+        # trace and compute gradients
         result = fn(*var_args, **var_kwargs)
-        # compute gradients
-        if argnum is None:
-            grad = result.grad(vars.values())
-        else:
-            grad = result.grad(var for name, var in vars.items() if name in argnum)
+        grad = result.grad(tree_iter(var_named))
 
-        # extract gradients for all arguments
-        grads = Grads({name: grad.wrt(var) for name, var in vars.items()})
+        # fetch gradients
+        grads = Grads(tree_map(var_named, lambda var: grad.wrt(var)))
         return (result._value, grads)
 
     return grad
@@ -451,8 +446,6 @@ def g(
 # ------------------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------------------
-
-
 def broadcast_to_match(
     a: ValueType,
     b: ValueType,
@@ -501,3 +494,25 @@ def unbroadcast_vjp(target: ValueType, vjp_base: VJP) -> VJP:
 
 def replace_zero(x: ValueType, val: ValueType) -> ValueType:
     return np.where(x, x, val)
+
+
+def tree_map(tree: Any, fn: Callable[[Any], Any]) -> Any:
+    """Map tree like structure"""
+    if isinstance(tree, dict):
+        return {key: tree_map(value, fn) for key, value in tree.items()}  # type: ignore
+    elif isinstance(tree, list):
+        return [tree_map(value, fn) for value in tree]  # type: ignore
+    elif isinstance(tree, tuple):
+        return type(tree)(tree_map(value, fn) for value in tree)  # type: ignore
+    return fn(tree)
+
+
+def tree_iter(tree: Any) -> Iterator[Any]:
+    """Iterator over all leaf elements of the tree"""
+    if isinstance(tree, dict):
+        for tree in tree.values():
+            yield from tree_iter(tree)
+    elif isinstance(tree, (list, tuple)):
+        for tree in tree:
+            yield from tree_iter(tree)
+    yield tree
