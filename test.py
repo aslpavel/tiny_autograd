@@ -171,6 +171,26 @@ class AutodiffTest(unittest.TestCase):
         assert_almost_equal(grad.wrt(y), 0.0)  # not computed
         assert_almost_equal(grad.wrt(z), 0.0)  # not computed
 
+    def test_tree(self):
+        a = {"first": 1, "second": 2, "thrid": (1, 2, 3), "fourth": [5]}
+        b = {"first": 5, "second": 3, "thrid": (7, 0, 1), "fourth": [4]}
+
+        # map
+        self.assertEqual(
+            tree_map((lambda a, b: a + b), a, b),
+            {"first": 6, "second": 5, "thrid": (8, 2, 4), "fourth": [9]},
+        )
+        self.assertEqual(
+            tree_map((lambda x: x * 2), a),
+            {"first": 2, "second": 4, "thrid": (2, 4, 6), "fourth": [10]},
+        )
+
+        # iter
+        self.assertEqual(
+            list(tree_iter(b)),
+            [5, 3, 7, 0, 1, 4],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
