@@ -2,8 +2,31 @@
 import unittest
 import numpy as np
 from numpy.testing import assert_almost_equal
-from typing import List, Any, Tuple
+from typing import Callable, List, Any, Tuple
 from tiny_autograd import *
+
+
+def check_grad(
+    f: Callable[..., Any],
+    args: Tuple[ValueType, ...],
+    argnum: int = 0,
+) -> None:
+    """Check grad against finite difference in the single random direction"""
+    f_grad = grad(f, argnums={argnum})
+
+    eps = 1e-4
+    vec = np.random.randn(*np.shape(args[argnum]))
+    unitvec = vec / np.sqrt(np.vdot(vec, vec))
+
+    args_high = [
+        arg + eps / 2.0 * unitvec for index, arg in enumerate(args) if index == argnum
+    ]
+    args_low = [
+        arg - eps / 2.0 * unitvec for index, arg in enumerate(args) if index == argnum
+    ]
+    grad_fd = (f_grad(*args_high)[0] - f_grad(*args_low)[0]) / eps
+    grad_ad: float = np.vdot(f_grad(*args)[1][argnum], unitvec)
+    assert_almost_equal(grad_ad, grad_fd, decimal=2)
 
 
 class AutodiffTest(unittest.TestCase):
@@ -31,9 +54,13 @@ class AutodiffTest(unittest.TestCase):
     def test_sum_and_mean(self):
         a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        sum = grad(lambda a: a.sum(axis=1).exp().sum())
+        def sum(a: Var) -> Var:
+            return a.sum(axis=1).exp().sum()
+
+        check_grad(sum, (a,))
+        sum_grad = grad(sum)
         self.assertGrad(
-            sum(a),
+            sum_grad(a),
             3269420.8012656034,
             a=[
                 [4.03428793e02, 4.03428793e02, 4.03428793e02],
@@ -41,15 +68,16 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-        mean = grad(lambda a: a.mean(axis=1).pow(2).sum())
+        def mean(a: Var) -> Var:
+            return a.mean(axis=1).pow(2).sum()
+
+        check_grad(mean, (a,))
+        mean_grad = grad(mean)
         self.assertGrad(
-            mean(a),
+            mean_grad(a),
             29,
             a=[[1.3333, 1.3333, 1.3333], [3.3333, 3.3333, 3.3333]],
         )
-
-    def test_arithm(self):
-        pass
 
     def test_matmul(self):
         a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -108,16 +136,24 @@ class AutodiffTest(unittest.TestCase):
         x = np.array([[100.0, 90.0, 99.0], [80.0, 81.0, 78.0]])
         m = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
-        sm = grad(lambda x: (x.softmax() * m[0]).sum())
+        def softmax_basic(x: Var) -> Var:
+            return (x.softmax() * m[0]).sum()
+
+        check_grad(softmax_basic, (x,))
+        softmax_basic_grad = grad(softmax_basic)
         self.assertGrad(
-            sm(x[0]),
+            softmax_basic_grad(x[0]),
             1.5378983,
             x=[-3.9322203e-01, 1.5336655e-05, 3.9320675e-01],
         )
 
-        sm = grad(lambda x: (x.softmax(axis=0) * m).sum())
+        def softmax_0(x: Var) -> Var:
+            return (x.softmax(axis=0) * m).sum()
+
+        check_grad(softmax_basic, (x,))
+        softmax_0_grad = grad(softmax_0)
         self.assertGrad(
-            sm(x),
+            softmax_0_grad(x),
             6.000370192186187,
             x=[
                 [0.0, -3.7026405e-04, 0.0],
@@ -125,9 +161,13 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-        sm = grad(lambda x: (x.softmax(axis=1) * m).sum())
+        def softmax_1(x: Var) -> Var:
+            return (x.softmax(axis=1) * m).sum()
+
+        check_grad(softmax_1, (x,))
+        softmax_1_grad = grad(softmax_1)
         self.assertGrad(
-            sm(x),
+            softmax_1_grad(x),
             6.313520746520074,
             x=[
                 [-3.9322203e-01, 1.5336655e-05, 3.9320675e-01],
