@@ -149,7 +149,7 @@ class AutodiffTest(unittest.TestCase):
             prediction = model(theta, x)
             return ((prediction - y) ** 2).mean()
 
-        loss_fn_grad = grad(loss_fn, argnum={0})
+        loss_fn_grad = grad(loss_fn, argnums={0})
 
         def update(theta: ValueType, lr: float = 0.1) -> ValueType:
             _, grads = loss_fn_grad(theta, xs, ys)

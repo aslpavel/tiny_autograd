@@ -122,7 +122,8 @@ def main():
 
         # evaluation
         y_test_hat = evaluate(model, X_test, y_test)[0][1]
-        print(f"test:  accuracy={accuracy(y_test_hat, y_test):.4f}")
+        print(f"valid: accuracy={accuracy(y_test_hat, y_test):.4f}")
+    breakpoint()
 
 
 if __name__ == "__main__":

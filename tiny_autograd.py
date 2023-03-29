@@ -423,7 +423,7 @@ class Grads:
 
 def grad(
     fn: Callable[..., Any],
-    argnum: Optional[Set[str | int]] = None,
+    argnums: Optional[Set[str | int]] = None,
     has_aux: bool = False,
 ) -> Callable[..., Tuple[Any, Grads]]:
     """Gradient decorator
@@ -440,11 +440,11 @@ def grad(
         var_named: Dict[str | int, Any] = {}
         spec = inspect.getfullargspec(fn).args
         for index, var in enumerate(var_args):
-            if argnum is None or index in argnum:
+            if argnums is None or index in argnums:
                 var_named[spec[index]] = var
                 var_named[index] = var
         for name, var in var_kwargs.items():
-            if argnum is None or name in argnum:
+            if argnums is None or name in argnums:
                 var_named[name] = var
 
         # trace and compute gradients
