@@ -44,7 +44,8 @@ class Linear(NamedTuple):
 
     @staticmethod
     def init(input: int, output: int) -> Linear:
-        weights = np.random.randn(input, output) / np.sqrt(input)
+        xavier_sigma = np.sqrt(2.0 / (input + output))
+        weights = np.random.randn(input, output) * xavier_sigma
         bias = np.zeros(output)
         return Linear(weights, bias)
 
@@ -76,7 +77,7 @@ def accuracy(y_hat: ArrayType, y: ArrayType) -> float:
     return np.mean(np.argmax(y_hat, axis=1) == np.argmax(y, axis=1))
 
 
-@partial(grad, argnum={0}, has_aux=True)
+@partial(grad, argnums={0}, has_aux=True)
 def evaluate(model: Model, x: Var, y: Var) -> Tuple[Var, Var]:
     y_hat = model(x)
     loss = cross_entropy(y_hat, y)
@@ -118,12 +119,11 @@ def main():
             accuracy_epoch.append(acc)
         epoch_end = time.time()
         print(f"time:  {epoch_end - epoch_start:.3f}")
-        print(f"train: accuracy={np.mean(accuracy_epoch):.4f}\tloss={loss_epoch:4f}")
+        print(f"train: accuracy={np.mean(accuracy_epoch):.6f}\tloss={loss_epoch:4f}")
 
         # evaluation
         y_test_hat = evaluate(model, X_test, y_test)[0][1]
-        print(f"valid: accuracy={accuracy(y_test_hat, y_test):.4f}")
-    breakpoint()
+        print(f"valid: accuracy={accuracy(y_test_hat, y_test):.6f}")
 
 
 if __name__ == "__main__":

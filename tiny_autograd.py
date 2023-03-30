@@ -496,9 +496,9 @@ def unbroadcast_vjp(target: ValueType, vjp_base: VJP) -> VJP:
     to the chain rule: df(x_i(u))/du = Σ df/dx_i * dx_i/du
 
     Or we can consider jacobian of the broadcast function which is going to include
-    ones in the intersections of broadcast source (column) and destinations (rows).
-    Then when we consider jacobian vector `gᵀ x J` that would mean we need to sum
-    gradients along broadcasted axes.
+    ones in the intersections of broadcast source (jacobian column) and destinations
+    (jacobian row). Then when we consider jacobian vector `gᵀ x J` it would mean
+    we need to sum gradients along broadcasted axes.
     """
 
     @wraps(vjp_base)
