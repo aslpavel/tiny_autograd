@@ -6,28 +6,38 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import time
 from functools import partial
-from typing import Any, Iterator, NamedTuple, Tuple
+from typing import Any, Dict, Iterator, NamedTuple, Tuple
 
 import numpy as np
-from sklearn.datasets import fetch_openml
-from sklearn.model_selection import train_test_split
+import datasets
 
 from tiny_autograd import *
 
 INPUT_SIZE: int = 28 * 28
 CLASSES: int = 10
+CLASSES_MAP: ArrayType = np.eye(CLASSES)
 
 
-def load_mnist() -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType]:
-    X, y = fetch_openml("mnist_784", return_X_y=True, parser="pandas")
-    X = X.to_numpy().astype(np.float32) / 255.0
-    y = np.eye(CLASSES)[y.map(int).to_numpy()]  # one-hot encoding
+def mnist_map(item: Dict[str, Any]) -> Dict[str, Any]:
+    return dict(
+        image=[
+            np.array(img, dtype=np.float32).reshape(INPUT_SIZE) / 255.0
+            for img in item["image"]
+        ],
+        label=[CLASSES_MAP[label] for label in item["label"]],
+    )
 
-    permutations = np.random.permutation(X.shape[0])
-    X = X[permutations]
-    y = y[permutations]
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-    return X_train, X_test, y_train, y_test  # type: ignore
+
+def mnist_load() -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType]:
+    ds = datasets.load_dataset("mnist")
+    train = ds["train"].map(mnist_map, batched=True)  # type: ignore
+    test = ds["test"].map(mnist_map, batched=True)  # type: ignore
+    return (
+        np.stack(train["image"]).squeeze(-1),
+        np.stack(test["image"]).squeeze(-1),
+        np.stack(train["label"]),
+        np.stack(test["label"]),
+    )  # type: ignore
 
 
 def batched(x: Any, y: Any, batch_size: int) -> Iterator[Tuple[Any, Any]]:
@@ -93,16 +103,15 @@ def update(
 
 
 def main():
-    print("Fetching MNIST ... ", end="", flush=True)
-    X_train, X_test, y_train, y_test = load_mnist()
-    print("DONE")
+    print("Loading MNIST ...")
+    X_train, X_test, y_train, y_test = mnist_load()
     print(f"train size: {X_train.shape[0]}")
     print(f"test size:  {X_test.shape[0]}")
 
     # hyper parameters
     hidden = 128
     batch_size = 32
-    epoch_count = 15
+    epoch_count = 10
     lr = 0.01
 
     model = Model.init(hidden)

@@ -303,6 +303,18 @@ class Var:
             np.log(self._value), (self._index, lambda g: g / self._value)
         )
 
+    def sin(self):
+        return self._tape.var(
+            np.sin(self._value),
+            (self._index, lambda g: g * np.cos(self._value)),
+        )
+
+    def cos(self):
+        return self._tape.var(
+            np.cos(self._value),
+            (self._index, lambda g: g * -np.sin(self._value)),
+        )
+
     def sum(self, axis: Any = None) -> Var:
         axis = self.__unlift(axis)
         return self._tape.var(
