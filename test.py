@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 from numpy.testing import assert_almost_equal
 from typing import Callable, List, Any, Tuple
-from tiny_autograd import *
+from tiny_autograd import ValueType, grad, Grads, Var, Tape, tree_map, tree_iter
 
 
 def check_grad(
