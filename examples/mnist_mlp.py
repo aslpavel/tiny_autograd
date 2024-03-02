@@ -11,7 +11,7 @@ from typing import Any, Dict, Iterator, NamedTuple, Tuple
 import numpy as np
 import datasets
 
-from tiny_autograd import *
+from tiny_autograd import ArrayType, Var, grad, tree_map
 
 INPUT_SIZE: int = 28 * 28
 CLASSES: int = 10

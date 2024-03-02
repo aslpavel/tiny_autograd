@@ -1,0 +1,18 @@
+[project]
+name = "tiny_autograd"
+version = "0.1.0"
+description = "Tiny automatic differentiation library based on numpy and similar to JAX"
+authors = [{ name = "Pavel Aslanov", email = "asl.pavel@gmail.com" }]
+dependencies = ["numpy", "datasets"]
+
+[project.urls]
+Homepage = "https://github.com/aslpavel/tiny_autograd"
+Repository = "https://github.com/aslpavel/tiny_autograd.git"
+
+[build-system]
+requires = ["setuptools", "setuptools-scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
