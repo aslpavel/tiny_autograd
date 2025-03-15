@@ -94,7 +94,7 @@ class Var:
         """Lift value to the variable"""
         if isinstance(value, Var):
             return value
-        return self._tape.var(np.array(value, copy=False))
+        return self._tape.var(np.asarray(value))
 
     def __unlift(self, value: Any) -> ValueType:
         if isinstance(value, Var):
@@ -478,7 +478,7 @@ def broadcast_to_match(
 
 def unbroadcast(input: ValueType, target: ValueType) -> ValueType:
     """Sum values along broadcast axes in `input` to mach the shape of the `target`"""
-    output = np.array(input, copy=False)
+    output = np.asarray(input)
     # leading dimensions are summed first
     while np.ndim(output) > np.ndim(target):
         output = np.sum(output, axis=0)  # type: ignore
