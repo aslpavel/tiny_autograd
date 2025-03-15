@@ -8,7 +8,7 @@ from tiny_autograd import ValueType, grad, Grads, Var, Tape, tree_map, tree_iter
 
 def check_grad(
     f: Callable[..., Any],
-    args: Tuple[ValueType, ...],
+    args: tuple[ValueType, ...],
     argnum: int = 0,
 ) -> None:
     """Check grad against finite difference in the single random direction"""
@@ -32,10 +32,10 @@ def check_grad(
 class AutodiffTest(unittest.TestCase):
     def assertGrad(
         self,
-        result: Tuple[ValueType, Grads],
+        result: tuple[ValueType, Grads],
         output_expected: ValueType,
-        **grads_expected: ValueType | List[Any],
-    ):
+        **grads_expected: ValueType | list[Any],
+    ) -> None:
         output, grads = result
         assert_almost_equal(output, output_expected, err_msg="function output mismatch")
         for name, grad in grads:
@@ -51,7 +51,7 @@ class AutodiffTest(unittest.TestCase):
                 err_msg=f'argument "{name}" mismatch',
             )
 
-    def test_sum_and_mean(self):
+    def test_sum_and_mean(self) -> None:
         a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
         def sum(a: Var) -> Var:
@@ -79,7 +79,7 @@ class AutodiffTest(unittest.TestCase):
             a=[[1.3333, 1.3333, 1.3333], [3.3333, 3.3333, 3.3333]],
         )
 
-    def test_matmul(self):
+    def test_matmul(self) -> None:
         a = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
         b = np.array([7.0, 9.0, 11.0])
         c = np.array([7.0, 3.0])
@@ -132,7 +132,7 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-    def test_softmax(self):
+    def test_softmax(self) -> None:
         x = np.array([[100.0, 90.0, 99.0], [80.0, 81.0, 78.0]])
         m = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
 
@@ -175,7 +175,7 @@ class AutodiffTest(unittest.TestCase):
             ],
         )
 
-    def test_linear_regression(self):
+    def test_linear_regression(self) -> None:
         np.random.seed(12345)
         xs = np.random.normal(size=(100,))
         noise = np.random.normal(scale=0.1, size=(100,))
@@ -200,7 +200,7 @@ class AutodiffTest(unittest.TestCase):
             theta = update(theta)
         assert_almost_equal(theta, [2.99636699, -1.00343618])
 
-    def test_grad_leaves(self):
+    def test_grad_leaves(self) -> None:
         tape = Tape()
         x = tape.var(np.array([-1, 2, 0]))
         y = tape.var(np.array([0, 1, 2]))
@@ -211,7 +211,7 @@ class AutodiffTest(unittest.TestCase):
         assert_almost_equal(grad.wrt(y), 0.0)  # not computed
         assert_almost_equal(grad.wrt(z), 0.0)  # not computed
 
-    def test_tree(self):
+    def test_tree(self) -> None:
         a = {"first": 1, "second": 2, "thrid": (1, 2, 3), "fourth": [5]}
         b = {"first": 5, "second": 3, "thrid": (7, 0, 1), "fourth": [4]}
 

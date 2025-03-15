@@ -6,7 +6,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import time
 from functools import partial
-from typing import Any, Dict, Iterator, NamedTuple, Tuple
+from typing import NamedTuple, Any
+from collections.abc import Iterator
 
 import numpy as np
 import datasets
@@ -18,7 +19,7 @@ CLASSES: int = 10
 CLASSES_MAP: ArrayType = np.eye(CLASSES)
 
 
-def mnist_map(item: Dict[str, Any]) -> Dict[str, Any]:
+def mnist_map(item: dict[str, Any]) -> dict[str, Any]:
     return dict(
         image=[
             np.array(img, dtype=np.float32).reshape(INPUT_SIZE) / 255.0
@@ -28,7 +29,7 @@ def mnist_map(item: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def mnist_load() -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType]:
+def mnist_load() -> tuple[ArrayType, ArrayType, ArrayType, ArrayType]:
     ds = datasets.load_dataset("mnist")
     train = ds["train"].map(mnist_map, batched=True)  # type: ignore
     test = ds["test"].map(mnist_map, batched=True)  # type: ignore
@@ -40,7 +41,7 @@ def mnist_load() -> Tuple[ArrayType, ArrayType, ArrayType, ArrayType]:
     )  # type: ignore
 
 
-def batched(x: Any, y: Any, batch_size: int) -> Iterator[Tuple[Any, Any]]:
+def batched(x: Any, y: Any, batch_size: int) -> Iterator[tuple[Any, Any]]:
     count = x.shape[0] // batch_size
     for index in np.random.permutation(count):
         start = index * batch_size
@@ -88,7 +89,7 @@ def accuracy(y_hat: ArrayType, y: ArrayType) -> float:
 
 
 @partial(grad, argnums={0}, has_aux=True)
-def evaluate(model: Model, x: Var, y: Var) -> Tuple[Var, Var]:
+def evaluate(model: Model, x: Var, y: Var) -> tuple[Var, Var]:
     y_hat = model(x)
     loss = cross_entropy(y_hat, y)
     return loss, y_hat
@@ -96,13 +97,13 @@ def evaluate(model: Model, x: Var, y: Var) -> Tuple[Var, Var]:
 
 def update(
     model: Model, x: ArrayType, y: ArrayType, lr: float
-) -> Tuple[Model, float, float]:
+) -> tuple[Model, float, float]:
     (loss, y_hat), grads = evaluate(model, x, y)
     model_updated = tree_map(lambda model, grads: model - lr * grads, model, grads[0])
     return model_updated, loss, accuracy(y_hat, y)
 
 
-def main():
+def main() -> None:
     print("Loading MNIST ...")
     X_train, X_test, y_train, y_test = mnist_load()
     print(f"train size: {X_train.shape[0]}")

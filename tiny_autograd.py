@@ -3,19 +3,8 @@ from __future__ import annotations
 
 import inspect
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Iterable,
-    Iterator,
-    List,
-    NewType,
-    Optional,
-    Set,
-    Tuple,
-    Dict,
-    cast,
-)
+from typing import Any, Callable, NewType, cast
+from collections.abc import Iterable, Iterator
 
 import numpy as np
 from numpy.typing import NDArray
@@ -31,10 +20,10 @@ __all__ = [
     "tree_iter",
 ]
 
-ArrayType = NDArray[np.float32 | np.float64]
-ValueType = ArrayType | float
+type ArrayType = NDArray[np.float32 | np.float64]
+type ValueType = ArrayType | float
+type VJP = Callable[[ValueType], ValueType]  # Vector-Jacobian product
 ValueIndex = NewType("ValueIndex", int)
-VJP = Callable[[ValueType], ValueType]  # Vector-Jacobian product
 
 
 # ------------------------------------------------------------------------------
@@ -58,7 +47,7 @@ class Var:
         self._value = value
         self._index = index  # index of this variable in the list of nodes on the tape
 
-    def grad(self, leaves: Optional[Iterable[Var]] = None) -> Grad:
+    def grad(self, leaves: Iterable[Var] | None = None) -> Grad:
         """Calculate gradients of this variable with respect to leaves
         (or all other the variables if leaves is None) that produced this variable.
 
@@ -68,11 +57,11 @@ class Var:
             raise ValueError("Gradient can only be calculated for scalar variables")
 
         # initialize grads
-        grads: List[ValueType] = [0.0] * (self._index + 1)
+        grads: list[ValueType] = [0.0] * (self._index + 1)
         grads[-1] = 1.0  # gradient with respect to value itself is 1.0
 
         # find variables that are required to compute gradients for all the leaves
-        skip: List[bool] = [False] * (self._index + 1)
+        skip: list[bool] = [False] * (self._index + 1)
         if leaves is not None:
             # skip all nodes that are not required to compute gradients for leaves
             def is_required(index: ValueIndex) -> bool:
@@ -137,7 +126,7 @@ class Var:
         return np.greater_equal(self._value, self.__unlift(other))
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         return np.shape(self._value)
 
     def __getitem__(self, selector: Any) -> Var:
@@ -303,13 +292,13 @@ class Var:
             np.log(self._value), (self._index, lambda g: g / self._value)
         )
 
-    def sin(self):
+    def sin(self) -> Var:
         return self._tape.var(
             np.sin(self._value),
             (self._index, lambda g: g * np.cos(self._value)),
         )
 
-    def cos(self):
+    def cos(self) -> Var:
         return self._tape.var(
             np.cos(self._value),
             (self._index, lambda g: g * -np.sin(self._value)),
@@ -359,7 +348,7 @@ class Var:
         return self.clip(0.0)
 
 
-VarLike = Var | ValueType
+type VarLike = Var | ValueType
 
 
 class Grad:
@@ -367,7 +356,7 @@ class Grad:
 
     __slots__ = ["grads"]
 
-    def __init__(self, grads: List[ValueType]) -> None:
+    def __init__(self, grads: list[ValueType]) -> None:
         self.grads = grads
 
     def wrt(self, var: Var) -> ValueType:
@@ -386,12 +375,12 @@ class Tape:
 
     __slots__ = ["nodes"]
 
-    nodes: List[List[Tuple[ValueIndex, VJP]]]
+    nodes: list[list[tuple[ValueIndex, VJP]]]
 
     def __init__(self) -> None:
         self.nodes = []
 
-    def var(self, value: ValueType, *dep_vjp: Tuple[ValueIndex, VJP]) -> Var:
+    def var(self, value: ValueType, *dep_vjp: tuple[ValueIndex, VJP]) -> Var:
         """Record new variable
 
         Args:
@@ -408,7 +397,7 @@ class Grads:
 
     __slots__ = ["__grads"]
 
-    def __init__(self, grads: Dict[str | int, ValueType]) -> None:
+    def __init__(self, grads: dict[str | int, ValueType]) -> None:
         self.__grads = grads
 
     def __getitem__(self, name_or_position: int | str) -> ValueType:
@@ -423,7 +412,7 @@ class Grads:
             raise AttributeError(f"invalid graient: {name}")
         return grad
 
-    def __iter__(self) -> Iterator[Tuple[str, ValueType]]:
+    def __iter__(self) -> Iterator[tuple[str, ValueType]]:
         for name, grad in self.__grads.items():
             if isinstance(name, int):
                 continue
@@ -433,23 +422,23 @@ class Grads:
         return "\n".join(f"{name}: {grad}" for name, grad in self)
 
 
-def grad(
-    fn: Callable[..., Any],
-    argnums: Optional[Set[str | int]] = None,
+def grad[**P, R](
+    fn: Callable[P, R],
+    argnums: set[str | int] | None = None,
     has_aux: bool = False,
-) -> Callable[..., Tuple[Any, Grads]]:
+) -> Callable[P, tuple[R, Grads]]:
     """Gradient decorator
 
     Convert function to a new function which returns result as the first argument
     and all the gradients of the result with respect to the arguments
     """
 
-    def grad(*args: Any, **kwargs: Any) -> Tuple[Any, Grads]:
+    def grad(*args: P.args, **kwargs: P.kwargs) -> tuple[R, Grads]:
         tape = Tape()
         var_args, var_kwargs = tree_map(lambda value: tape.var(value), (args, kwargs))
 
         # find leaf variables of interest and its names
-        var_named: Dict[str | int, Any] = {}
+        var_named: dict[str | int, Any] = {}
         spec = inspect.getfullargspec(fn).args
         for index, var in enumerate(var_args):
             if argnums is None or index in argnums:
@@ -477,8 +466,8 @@ def grad(
 def broadcast_to_match(
     a: ValueType,
     b: ValueType,
-    axis: int | Tuple[int] | None,
-) -> Tuple[ArrayType, int]:
+    axis: int | tuple[int] | None,
+) -> tuple[ArrayType, int]:
     """Broadcast `a` along `axis` to match `b`s shape"""
     b_shape = np.shape(b)
     repeats: int = np.prod(np.array(b_shape)[axis])  # type: ignore
@@ -524,13 +513,13 @@ def replace_zero(x: ValueType, val: ValueType) -> ValueType:
     return np.where(x, x, val)
 
 
-def tree_map(fn: Callable[..., Any], tree: Any, *trees: Any) -> Any:
+def tree_map(fn: Callable[..., Any], tree: Any, /, *trees: Any) -> Any:
     """Apply function to multiple trees at once"""
     if not all(isinstance(other, type(tree)) for other in trees):
         raise TypeError("All trees must of be of the same type")
     if isinstance(tree, dict):
-        result: Dict[Any, Any] = {}
-        for key, value in cast(Dict[Any, Any], tree).items():
+        result: dict[Any, Any] = {}
+        for key, value in cast(dict[Any, Any], tree).items():
             result[key] = tree_map(fn, value, *map(lambda other: other[key], trees))
         return result
     elif isinstance(tree, list):
